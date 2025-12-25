@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { INITIAL_METRICS, AGENT_ROLES_DB } from './constants';
-import { AgentNodeData, Connection, MMSSMetric } from './types';
+import { AgentNodeData, Connection, MMSSMetric, GlobalSettings } from './types';
 import { MetricDisplay } from './components/MetricDisplay';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { generateMMSSJson } from './services/mmssFactory';
@@ -9,7 +9,11 @@ import { generateMMSSJson } from './services/mmssFactory';
 function App() {
   const [activeTab, setActiveTab] = useState<'designer' | 'json' | 'settings'>('designer');
   const [metrics, setMetrics] = useState<MMSSMetric[]>(INITIAL_METRICS);
+  
+  // Global Settings State
   const [objectiveFunction, setObjectiveFunction] = useState("J = Ψ(Quality, Robustness, Cost, Latency, Accessibility, Reusability)");
+  const [semanticInjection, setSemanticInjection] = useState("Invariant: All agents must maintain JSON-RPC protocol adherence. Terminology: 'Node' refers to active agents, 'Edge' refers to message protocols.");
+  const [promptInfluence, setPromptInfluence] = useState({ prompt: 0.7, tools: 0.2, schema: 0.1 });
   
   // Graph State
   const [nodes, setNodes] = useState<AgentNodeData[]>([
@@ -32,7 +36,7 @@ function App() {
       id: 'agent_mixer', 
       x: 500, 
       y: 300, 
-      roleId: 'MIXER_AGENT', 
+      roleId: 'GENETIC_MIXER', 
       runtimeConfig: { model: 'mistral-large-latest', temperature: 0.9 }
     }
   ]);
@@ -110,8 +114,14 @@ function App() {
 
   // JSON Generation
   const jsonOutput = useMemo(() => {
-    return generateMMSSJson(nodes, connections, objectiveFunction);
-  }, [nodes, connections, objectiveFunction]);
+    const settings: GlobalSettings = {
+      objectiveFunction,
+      semanticInjection,
+      promptInfluence
+    };
+    const currentMetricsMap = metrics.reduce((acc, m) => ({...acc, [m.id]: m.value}), {} as Record<string, number>);
+    return generateMMSSJson(nodes, connections, settings, currentMetricsMap);
+  }, [nodes, connections, objectiveFunction, semanticInjection, promptInfluence, metrics]);
 
   const handleExport = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(jsonOutput, null, 2));
@@ -177,12 +187,12 @@ function App() {
           <aside className="w-64 bg-mmss-panel border-r border-mmss-border flex flex-col">
             <div className="p-4 border-b border-mmss-border">
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Constructor Palette</h2>
-              <div className="space-y-2">
+              <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-250px)] pr-2">
                 {AGENT_ROLES_DB.map(role => (
                   <div 
                     key={role.id}
                     onClick={() => handleAddNode(role.id)}
-                    className="p-3 bg-slate-800 border border-slate-700 rounded cursor-pointer hover:border-mmss-accent hover:shadow-lg hover:shadow-cyan-500/10 transition-all group"
+                    className="p-3 bg-slate-800 border border-slate-700 rounded cursor-pointer hover:border-mmss-accent hover:shadow-lg hover:shadow-cyan-500/10 transition-all group mb-2"
                   >
                     <div className="text-xs font-bold text-gray-200 group-hover:text-mmss-accent">{role.roleName}</div>
                     <div className="text-[10px] text-gray-500 mt-1 truncate">{role.runtime}</div>
@@ -297,31 +307,80 @@ function App() {
                 </div>
              </div>
           ) : (
-            <div className="flex-1 p-8 max-w-2xl mx-auto">
-              <h2 className="text-2xl font-bold mb-6 text-mmss-accent">Global Objective Function</h2>
+            <div className="flex-1 p-8 max-w-2xl mx-auto overflow-y-auto">
+              <h2 className="text-2xl font-bold mb-6 text-mmss-accent">System Configuration</h2>
               <div className="space-y-6">
+                 
+                 {/* Objective Function */}
                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Primary Objective Formula (J)</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Primary Objective Function (J)</label>
                     <textarea 
                       value={objectiveFunction}
                       onChange={(e) => setObjectiveFunction(e.target.value)}
-                      className="w-full h-32 bg-slate-800 border border-mmss-border rounded p-4 text-gray-200 font-mono focus:border-mmss-accent focus:outline-none"
+                      className="w-full h-24 bg-slate-800 border border-mmss-border rounded p-4 text-gray-200 font-mono text-sm focus:border-mmss-accent focus:outline-none"
                     />
                  </div>
+
+                 {/* Semantic Injection */}
+                 <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Semantic Injection (Domain Invariants)</label>
+                    <textarea 
+                      value={semanticInjection}
+                      onChange={(e) => setSemanticInjection(e.target.value)}
+                      className="w-full h-24 bg-slate-800 border border-mmss-border rounded p-4 text-gray-200 font-mono text-sm focus:border-mmss-accent focus:outline-none"
+                    />
+                 </div>
+
+                 {/* Prompt Influence */}
+                 <div className="bg-slate-800/50 rounded border border-mmss-border p-4">
+                    <h3 className="text-mmss-purple font-bold mb-4 text-sm uppercase">Prompt Influence Weights</h3>
+                    <div className="grid grid-cols-3 gap-6">
+                       <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Prompt Weight</label>
+                          <input 
+                            type="number" step="0.1" min="0" max="1"
+                            value={promptInfluence.prompt}
+                            onChange={(e) => setPromptInfluence({...promptInfluence, prompt: parseFloat(e.target.value)})}
+                            className="w-full bg-slate-900 border border-gray-700 rounded p-2 text-sm text-cyan-400" 
+                          />
+                       </div>
+                       <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Tools Weight</label>
+                          <input 
+                            type="number" step="0.1" min="0" max="1"
+                            value={promptInfluence.tools}
+                            onChange={(e) => setPromptInfluence({...promptInfluence, tools: parseFloat(e.target.value)})}
+                            className="w-full bg-slate-900 border border-gray-700 rounded p-2 text-sm text-cyan-400" 
+                          />
+                       </div>
+                       <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Schema Weight</label>
+                          <input 
+                            type="number" step="0.1" min="0" max="1"
+                            value={promptInfluence.schema}
+                            onChange={(e) => setPromptInfluence({...promptInfluence, schema: parseFloat(e.target.value)})}
+                            className="w-full bg-slate-900 border border-gray-700 rounded p-2 text-sm text-cyan-400" 
+                          />
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* API Info */}
                  <div className="p-4 bg-slate-800/50 rounded border border-mmss-border">
-                    <h3 className="text-mmss-purple font-bold mb-2">API Configuration</h3>
-                    <p className="text-xs text-gray-500 mb-4">Keys are loaded from process.env.API_KEY. Configure specific endpoints here if using custom proxies.</p>
+                    <h3 className="text-gray-400 font-bold mb-2 text-sm uppercase">Runtime Bindings</h3>
+                    <p className="text-xs text-gray-500 mb-4">Keys are injected via process.env.API_KEY. Endpoints are predefined for hybrid orchestration.</p>
                     <div className="grid grid-cols-2 gap-4">
                        <div className="opacity-50">
-                          <label className="text-xs">Google AI Studio Endpoint</label>
+                          <label className="text-xs">Google AI Studio</label>
                           <input disabled value="https://generativelanguage.googleapis.com" className="w-full bg-slate-900 border border-gray-700 rounded p-2 text-xs text-gray-500" />
                        </div>
                        <div className="opacity-50">
-                          <label className="text-xs">Mistral API Endpoint</label>
+                          <label className="text-xs">Mistral API</label>
                           <input disabled value="https://api.mistral.ai/v1/agents" className="w-full bg-slate-900 border border-gray-700 rounded p-2 text-xs text-gray-500" />
                        </div>
                     </div>
                  </div>
+
               </div>
             </div>
           )}
