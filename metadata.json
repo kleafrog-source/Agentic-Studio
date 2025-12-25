@@ -1,0 +1,5 @@
+{
+  "name": "MMSS Agentic Studio",
+  "description": "A hybrid MMSS-JSON pipeline designer for orchestrating multi-agent systems using Google AI Studio and Mistral Agents API.",
+  "requestFramePermissions": []
+}
